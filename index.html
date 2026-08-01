@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wish Board — hang something true, on-chain</title>
+<meta name="description" content="A free, permanent wish wall on BOT Chain Mainnet. Connect MetaMask, write a few words, hang it for anyone to read.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+  /* ============================================================
+     TOKENS
+     ============================================================ */
+  :root{
+    --brown: #4A3F35;   /* board / background */
+    --brown-deep: #3a3129;
+    --tan: #C19A6B;     /* strings, borders, secondary accents */
+    --cream: #FAF3E0;   /* tags, cards, light text on dark */
+    --sage: #7D8F69;    /* success / connected state */
+    --rust: #7B2D26;    /* primary action */
+    --rust-hi: #8f342b;
+
+    --font-body: 'Inter', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+    --font-hand: 'Kalam', cursive;
+
+    --radius-s: 6px;
+    --radius-m: 10px;
+    --shadow-tag: 0 6px 14px rgba(0,0,0,.28), 0 1px 0 rgba(255,255,255,.03) inset;
+    --ease: cubic-bezier(.4,0,.2,1);
+  }
+
+  *,*::before,*::after{ box-sizing:border-box; }
+  html{ scroll-behavior:smooth; }
+  body{
+    margin:0;
+    background: var(--brown);
+    background-image:
+      repeating-linear-gradient(90deg, rgba(0,0,0,.14) 0 2px, transparent 2px 148px),
+      linear-gradient(180deg, rgba(0,0,0,.12), transparent 220px);
+    color: var(--cream);
+    font-family: var(--font-body);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  img,svg{ display:block; max-width:100%; }
+  a{ color: inherit; }
+  button{ font-family: inherit; }
+
+  ::selection{ background: var(--rust); color: var(--cream); }
+
+  :focus-visible{
+    outline: 2px solid var(--sage);
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
+
+  .wrap{ max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  .eyebrow{
+    font-family: var(--font-mono);
+    font-size: .72rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--tan);
+  }
+
+  /* ============================================================
+     NAV
+     ============================================================ */
+  header.nav{
+    position: sticky; top:0; z-index: 40;
+    background: rgba(58,49,41,.88);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(193,154,107,.22);
+  }
+  .nav-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 14px 0;
+    gap: 12px 16px;
+    flex-wrap: wrap;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; text-decoration:none; }
+  .brand-mark{ width:30px; height:30px; flex:none; color: var(--rust); }
+  .brand-text{ display:flex; flex-direction:column; line-height:1.1; }
+  .brand-title{ font-family: var(--font-hand); font-size:1.4rem; font-weight:700; color: var(--cream); }
+  .brand-sub{ font-family: var(--font-mono); font-size:.62rem; letter-spacing:.08em; color: var(--tan); text-transform:uppercase; }
+
+  .nav-right{ display:flex; align-items:center; gap:10px; }
+
+  .chip{
+    font-family: var(--font-mono);
+    font-size: .7rem;
+    letter-spacing: .02em;
+    color: var(--cream);
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(193,154,107,.4);
+    border-radius: 999px;
+    padding: 6px 12px;
+    display:inline-flex; align-items:center; gap:6px;
+    cursor:pointer;
+    transition: background .15s var(--ease), border-color .15s var(--ease);
+    white-space: nowrap;
+  }
+  .chip:hover{ background: rgba(255,255,255,.09); }
+  .chip.is-active{ border-color: var(--sage); color: var(--sage); }
+  .chip-dot{ width:7px; height:7px; border-radius:50%; background: var(--tan); flex:none; }
+  .chip-dot.on{ background: var(--sage); box-shadow: 0 0 0 3px rgba(125,143,105,.25); }
+  .chip-dot.off{ background: #a05a4f; }
+
+  .btn{
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: .88rem;
+    border: none;
+    border-radius: 999px;
+    padding: 10px 18px;
+    cursor: pointer;
+    display:inline-flex; align-items:center; gap:8px;
+    transition: transform .12s var(--ease), background .15s var(--ease), box-shadow .15s var(--ease);
+  }
+  .btn:active{ transform: translateY(1px); }
+  .btn:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
+  .btn svg{ width:16px; height:16px; flex:none; }
+
+  .btn-primary{ background: var(--rust); color: var(--cream); }
+  .btn-primary:hover:not(:disabled){ background: var(--rust-hi); }
+
+  .btn-ghost{
+    background: transparent; color: var(--cream);
+    border: 1px solid rgba(250,243,224,.35);
+  }
+  .btn-ghost:hover:not(:disabled){ background: rgba(255,255,255,.06); }
+
+  .btn-sm{ padding: 7px 13px; font-size: .78rem; }
+  .btn-icon{ padding: 8px; }
+  .btn-icon svg{ width:16px; height:16px; }
+
+  /* ============================================================
+     HERO
+     ============================================================ */
+  .hero{ padding: 72px 0 40px; text-align:center; }
+  .hero .eyebrow{ margin-bottom: 18px; }
+  .hero h1{
+    font-family: var(--font-hand);
+    font-weight: 700;
+    font-size: clamp(2.1rem, 5vw, 3.4rem);
+    line-height: 1.15;
+    margin: 0 auto 18px;
+    max-width: 16ch;
+    color: var(--cream);
+  }
+  .hero p.lead{
+    font-size: 1.02rem;
+    color: rgba(250,243,224,.78);
+    max-width: 46ch;
+    margin: 0 auto 40px;
+  }
+
+  /* composer, styled as a large hanging tag */
+  .composer-wrap{ display:flex; flex-direction:column; align-items:center; }
+  .string{
+    width: 2px;
+    background: linear-gradient(var(--tan), rgba(193,154,107,.4));
+  }
+  .composer{
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    background: var(--cream);
+    border-radius: 4px 4px var(--radius-m) var(--radius-m);
+    box-shadow: var(--shadow-tag);
+    padding: 26px 26px 20px;
+    text-align: left;
+    color: var(--brown);
+  }
+  .grommet{
+    position:absolute; top:-8px; left:50%; transform:translateX(-50%);
+    width:16px; height:16px; border-radius:50%;
+    background: var(--brown);
+    border: 3px solid var(--tan);
+  }
+  .composer-label{
+    font-family: var(--font-mono);
+    font-size: .68rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--rust);
+    margin: 0 0 10px;
+  }
+  textarea#wishInput{
+    width:100%;
+    resize: vertical;
+    min-height: 92px;
+    border: 1.5px dashed rgba(74,63,53,.35);
+    background: rgba(74,63,53,.03);
+    border-radius: var(--radius-s);
+    padding: 12px 14px;
+    font-family: var(--font-hand);
+    font-size: 1.15rem;
+    color: var(--brown);
+    line-height:1.4;
+  }
+  textarea#wishInput::placeholder{ color: rgba(74,63,53,.45); font-family: var(--font-body); font-size: .95rem; }
+  .composer-foot{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-top: 14px; gap:10px; flex-wrap: wrap;
+  }
+  .char-count{ font-family: var(--font-mono); font-size: .72rem; color: rgba(74,63,53,.55); }
+  .char-count.warn{ color: var(--rust); }
+
+  .composer-note{
+    font-size: .76rem; color: rgba(74,63,53,.55); margin-top:10px;
+  }
+
+  /* stats row */
+  .stats{
+    display:flex; justify-content:center; gap: 48px;
+    margin-top: 52px; flex-wrap: wrap;
+  }
+  .stat{ text-align:center; }
+  .stat-num{ font-family: var(--font-mono); font-size: 1.6rem; font-weight:500; color: var(--cream); }
+  .stat-label{ font-family: var(--font-mono); font-size: .68rem; letter-spacing:.08em; text-transform:uppercase; color: var(--tan); margin-top:4px; }
+
+  /* ============================================================
+     STATUS BAR (inline feedback under composer)
+     ============================================================ */
+  #inlineStatus{
+    max-width: 480px; margin: 16px auto 0;
+    font-family: var(--font-mono); font-size: .78rem;
+    padding: 10px 14px; border-radius: var(--radius-s);
+    display:none; align-items:center; gap:8px;
+    border: 1px solid transparent;
+  }
+  #inlineStatus.show{ display:flex; }
+  #inlineStatus.info{ background: rgba(193,154,107,.12); border-color: rgba(193,154,107,.4); color: var(--tan); }
+  #inlineStatus.ok{ background: rgba(125,143,105,.15); border-color: rgba(125,143,105,.5); color: var(--sage); }
+  #inlineStatus.err{ background: rgba(123,45,38,.18); border-color: rgba(123,45,38,.55); color: #e6a49c; }
+
+  .spin{ width:14px; height:14px; flex:none; animation: rotate 0.9s linear infinite; }
+  @keyframes rotate{ to{ transform: rotate(360deg); } }
+
+  /* ============================================================
+     SETUP BAR (contract address / network)
+     ============================================================ */
+  .setup{
+    max-width: 720px; margin: 0 auto 8px;
+    background: rgba(0,0,0,.16);
+    border: 1px solid rgba(193,154,107,.25);
+    border-radius: var(--radius-m);
+    padding: 14px 18px;
+  }
+  .setup-row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .setup label{ font-family: var(--font-mono); font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color: var(--tan); }
+  .setup input[type=text]{
+    flex: 1 1 260px;
+    background: rgba(250,243,224,.06);
+    border: 1px solid rgba(193,154,107,.4);
+    border-radius: var(--radius-s);
+    color: var(--cream);
+    font-family: var(--font-mono);
+    font-size: .82rem;
+    padding: 9px 12px;
+  }
+  .setup input[type=text]::placeholder{ color: rgba(250,243,224,.35); }
+  .setup-hint{ font-size:.76rem; color: rgba(250,243,224,.55); margin-top:8px; }
+  .setup-hint code{ font-family: var(--font-mono); background: rgba(0,0,0,.2); padding: 1px 5px; border-radius:3px; }
+  .setup-reveal{ text-align:center; margin: -2px 0 8px; }
+  .btn-linklike{
+    background:none; border:none; cursor:pointer;
+    font-family: var(--font-mono); font-size:.7rem; letter-spacing:.05em;
+    color: rgba(250,243,224,.4); text-decoration: underline; text-underline-offset: 3px;
+    padding: 4px 6px;
+  }
+  .btn-linklike:hover{ color: var(--tan); }
+
+  /* ============================================================
+     WALL
+     ============================================================ */
+  .wall-section{ padding: 64px 0 40px; }
+  .wall-head{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    gap: 20px; flex-wrap: wrap; margin-bottom: 26px;
+  }
+  .wall-head h2{
+    font-family: var(--font-hand); font-size: 2rem; margin:0 0 6px; color: var(--cream);
+  }
+  .wall-head p{ margin:0; color: rgba(250,243,224,.6); font-size:.92rem; }
+
+  .rail{
+    height: 10px;
+    border-radius: 999px;
+    margin: 0 auto 4px;
+    background: linear-gradient(180deg, #d9b988, var(--tan) 55%, #9c7a4f);
+    box-shadow: 0 3px 6px rgba(0,0,0,.35);
+    background-image:
+      radial-gradient(circle, rgba(74,63,53,.55) 1.5px, transparent 1.6px),
+      linear-gradient(180deg, #d9b988, var(--tan) 55%, #9c7a4f);
+    background-size: 26px 10px, 100% 100%;
+    background-repeat: repeat-x, no-repeat;
+    background-position: 13px center, 0 0;
+  }
+
+  .wall-grid{
+    display:flex; flex-wrap:wrap;
+    justify-content:center;
+    gap: 6px 20px;
+    padding-top: 6px;
+    min-height: 120px;
+  }
+  .tag-unit{
+    display:flex; flex-direction:column; align-items:center;
+    width: clamp(168px, 22vw, 232px);
+  }
+  .tag-unit .string{ flex:none; }
+  .tag{
+    position:relative;
+    width:100%;
+    background: var(--cream);
+    color: var(--brown);
+    border-radius: 3px 3px var(--radius-s) var(--radius-s);
+    box-shadow: var(--shadow-tag);
+    padding: 16px 14px 12px;
+    margin-top: -1px;
+    animation: sway 6s ease-in-out infinite;
+    transform-origin: top center;
+  }
+  .tag .grommet{ width:11px; height:11px; border-width:2px; top:-6px; }
+  .tag-message{
+    font-family: var(--font-hand);
+    font-size: 1.02rem;
+    line-height: 1.42;
+    margin: 4px 0 12px;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .tag-meta{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:8px;
+    font-family: var(--font-mono);
+    font-size: .66rem;
+    color: rgba(74,63,53,.55);
+    border-top: 1px dashed rgba(74,63,53,.22);
+    padding-top: 8px;
+  }
+  .tag-meta a{ color: var(--rust); text-decoration:none; }
+  .tag-meta a:hover{ text-decoration:underline; }
+
+  @keyframes sway{
+    0%,100%{ transform: rotate(var(--rot,0deg)); }
+    50%{ transform: rotate(calc(var(--rot,0deg) * -1)); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .tag{ animation:none; }
+    html{ scroll-behavior:auto; }
+  }
+
+  .wall-empty, .wall-error{
+    text-align:center; padding: 40px 20px;
+    font-family: var(--font-hand); font-size: 1.2rem;
+    color: rgba(250,243,224,.65);
+  }
+  .wall-error{ font-family: var(--font-mono); font-size:.85rem; color:#e6a49c; }
+  .wall-loading{ text-align:center; padding: 40px; color: var(--tan); font-family: var(--font-mono); font-size:.82rem; }
+
+  /* ============================================================
+     TOAST
+     ============================================================ */
+  #toastHost{
+    position: fixed; left:50%; bottom: 22px; transform: translateX(-50%);
+    display:flex; flex-direction:column; gap:8px; z-index:80;
+    width: min(92vw, 380px);
+  }
+  .toast{
+    font-family: var(--font-mono); font-size:.8rem;
+    padding: 11px 16px; border-radius: var(--radius-s);
+    background: var(--brown-deep);
+    border: 1px solid rgba(193,154,107,.4);
+    color: var(--cream);
+    box-shadow: 0 10px 30px rgba(0,0,0,.4);
+    animation: toast-in .2s var(--ease);
+  }
+  .toast.ok{ border-color: var(--sage); }
+  .toast.err{ border-color: var(--rust); }
+  @keyframes toast-in{ from{ opacity:0; transform: translateY(8px);} to{opacity:1; transform:none;} }
+
+  /* ============================================================
+     FOOTER
+     ============================================================ */
+  footer{
+    margin-top: 40px;
+    border-top: 1px solid rgba(193,154,107,.22);
+    background: rgba(0,0,0,.14);
+    padding: 40px 0 30px;
+  }
+  .foot-grid{
+    display:grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 32px;
+  }
+  .foot-title{ font-family: var(--font-hand); font-size:1.3rem; margin:0 0 8px; }
+  .foot-tagline{ color: rgba(250,243,224,.6); font-size:.88rem; max-width: 32ch; }
+  .foot-h{ font-family: var(--font-mono); font-size:.68rem; letter-spacing:.1em; text-transform:uppercase; color: var(--tan); margin: 0 0 12px; }
+  .foot-table{ font-family: var(--font-mono); font-size:.78rem; color: rgba(250,243,224,.75); }
+  .foot-table div{ display:flex; justify-content:space-between; gap:12px; padding:4px 0; border-bottom: 1px dashed rgba(193,154,107,.18); }
+  .foot-table a{ color: var(--cream); text-decoration:underline; text-decoration-color: rgba(193,154,107,.5); }
+  .foot-links a{ display:block; font-size:.85rem; color: rgba(250,243,224,.75); text-decoration:none; padding: 4px 0; }
+  .foot-links a:hover{ color: var(--cream); text-decoration: underline; }
+  .foot-bottom{
+    margin-top: 30px; padding-top: 20px;
+    border-top: 1px solid rgba(193,154,107,.15);
+    display:flex; justify-content:space-between; align-items:center;
+    font-family: var(--font-mono); font-size:.72rem; color: rgba(250,243,224,.45);
+    flex-wrap: wrap; gap:10px;
+  }
+
+  @media (max-width: 760px){
+    .foot-grid{ grid-template-columns: 1fr; }
+    .hero{ padding: 52px 0 24px; }
+  }
+  @media (max-width: 560px){
+    .nav-row{ gap: 8px 10px; }
+    .nav-right{ width:100%; justify-content:flex-end; gap: 8px; }
+    .brand-sub{ display:none; }
+    .brand-title{ font-size: 1.25rem; }
+    .chip .chip-label{ display:none; }
+    .chip{ padding: 6px 9px; }
+    .btn-primary, .btn-ghost{ padding: 8px 14px; font-size: .84rem; }
+    .btn-icon{ padding: 7px; }
+    .stats{ gap: 28px; }
+    .wrap{ padding: 0 16px; }
+    .composer{ padding: 22px 18px 16px; }
+    .hero h1{ font-size: clamp(1.7rem, 7vw, 2.1rem); }
+  }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-row">
+    <a href="#top" class="brand" aria-label="Wish Board home">
+      <svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 9.5V5a1 1 0 0 1 1-1h4.5L20 14.5 14.5 20 4 9.5z"></path>
+        <circle cx="7.2" cy="7.2" r="1.2"></circle>
+      </svg>
+      <span class="brand-text">
+        <span class="brand-title">Wish Board</span>
+        <span class="brand-sub">on BOT Chain</span>
+      </span>
+    </a>
+    <div class="nav-right">
+      <a class="btn btn-ghost btn-sm btn-icon" href="https://github.com/kruegerbuild" target="_blank" rel="noopener" aria-label="View source on GitHub" title="View source on GitHub">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.74.5 12.02c0 5.02 3.26 9.28 7.78 10.79.57.1.78-.25.78-.55 0-.27-.01-1.16-.02-2.1-3.16.69-3.83-1.34-3.83-1.34-.52-1.31-1.26-1.66-1.26-1.66-1.03-.7.08-.69.08-.69 1.14.08 1.74 1.17 1.74 1.17 1.01 1.73 2.65 1.23 3.3.94.1-.73.4-1.23.72-1.51-2.52-.29-5.17-1.26-5.17-5.62 0-1.24.44-2.26 1.17-3.05-.12-.29-.51-1.45.11-3.02 0 0 .96-.31 3.15 1.16a10.9 10.9 0 0 1 5.74 0c2.19-1.47 3.15-1.16 3.15-1.16.62 1.57.23 2.73.11 3.02.73.79 1.17 1.81 1.17 3.05 0 4.37-2.66 5.33-5.19 5.61.41.35.77 1.04.77 2.1 0 1.52-.01 2.74-.01 3.11 0 .3.2.66.79.55A10.53 10.53 0 0 0 23.5 12c0-6.27-5.23-11.5-11.5-11.5z"></path></svg>
+      </a>
+      <button class="chip" id="networkChip" type="button" title="BOT Chain Mainnet — click to switch your wallet here">
+        <span class="chip-dot" id="networkDot"></span>
+        <span class="chip-label" id="networkChipLabel">Mainnet · 677</span>
+      </button>
+      <button class="btn btn-primary" id="connectBtn" type="button" aria-label="Connect MetaMask wallet">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a2 2 0 0 0-2-2H6a3 3 0 0 1 0-6h12"></path><path d="M21 12v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"></path><circle cx="17" cy="12" r="1.4" fill="currentColor" stroke="none"></circle></svg>
+        <span id="connectBtnLabel">Connect</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ============================= HERO ============================= -->
+  <section class="hero wrap">
+    <p class="eyebrow">A public wall on BOT Chain — free to hang</p>
+    <h1>Hang something true on the wall.</h1>
+    <p class="lead">Every wish here lives on-chain, permanently, for anyone to read. No fee to post, no account to make — just a wallet and a few honest words.</p>
+
+    <div class="composer-wrap">
+      <div class="string" style="height:22px;"></div>
+      <div class="composer">
+        <div class="grommet"></div>
+        <p class="composer-label">Your wish</p>
+        <textarea id="wishInput" maxlength="280" aria-label="Your wish" placeholder="Say it plainly. What do you want the wall to remember?"></textarea>
+        <div class="composer-foot">
+          <span class="char-count" id="charCount">0 / 280</span>
+          <button class="btn btn-primary" id="postBtn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>
+            <span id="postBtnLabel">Hang it on the wall</span>
+          </button>
+        </div>
+        <p class="composer-note" id="feeNote">Free to post — the contract charges nothing. Your wallet will still show a small network gas fee; that's paid to the chain, not to this board.</p>
+      </div>
+      <div id="inlineStatus"></div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-num" id="statCount">—</div>
+        <div class="stat-label">Wishes hung</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" id="statWishers">—</div>
+        <div class="stat-label">Unique wishers</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" id="statCost">—</div>
+        <div class="stat-label">Cost to hang one</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= SETUP ============================= -->
+  <section class="wrap">
+    <div class="setup" id="setupBar">
+      <div class="setup-row">
+        <label for="contractInput">Contract</label>
+        <input type="text" id="contractInput" placeholder="0x… paste your deployed WishBoard address">
+        <button class="btn btn-ghost btn-sm" id="loadContractBtn" type="button">Load board</button>
+      </div>
+      <p class="setup-hint" id="setupHint">Deploy <code>WishBoard.sol</code>, paste the address above, and the wall below will load straight from the chain. This bar is for testing only — once <code>CONTRACT_ADDRESS</code> is set in the code, it hides itself.</p>
+    </div>
+    <p class="setup-reveal" id="setupReveal" style="display:none;">
+      <button class="btn-linklike" id="setupRevealBtn" type="button">Change contract (dev)</button>
+    </p>
+  </section>
+
+  <!-- ============================= WALL ============================= -->
+  <section class="wall-section wrap">
+    <div class="wall-head">
+      <div>
+        <h2>The wall</h2>
+        <p>Every wish ever hung, straight from the contract.</p>
+      </div>
+      <button class="chip" id="sortToggle" type="button">Newest first</button>
+    </div>
+
+    <div class="rail" aria-hidden="true"></div>
+    <div class="wall-grid" id="wallGrid">
+      <div class="wall-loading">Reading the wall…</div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot-grid">
+    <div>
+      <p class="foot-title">Wish Board</p>
+      <p class="foot-tagline">A free, permanent wish wall built on BOT Chain Mainnet for the Build Week Hackathon.</p>
+    </div>
+    <div>
+      <p class="foot-h">Network</p>
+      <div class="foot-table">
+        <div><span>Chain</span><span id="footChain">BOT Chain Mainnet</span></div>
+        <div><span>Chain ID</span><span id="footChainId">677</span></div>
+        <div><span>RPC</span><a id="footRpc" href="https://rpc.botchain.ai" target="_blank" rel="noopener">rpc.botchain.ai</a></div>
+        <div><span>Explorer</span><a id="footExplorer" href="https://scan.botchain.ai" target="_blank" rel="noopener">scan.botchain.ai</a></div>
+        <div><span>Contract</span><a id="footContract" href="#" target="_blank" rel="noopener">not set</a></div>
+      </div>
+    </div>
+    <div>
+      <p class="foot-h">Links</p>
+      <div class="foot-links">
+        <a href="https://github.com/kruegerbuild" target="_blank" rel="noopener">View source on GitHub ↗</a>
+        <a href="https://metamask.io/" target="_blank" rel="noopener">Get MetaMask ↗</a>
+        <a href="https://dev-docs.botchain.ai/docs/intro" target="_blank" rel="noopener">BOT Chain docs ↗</a>
+      </div>
+    </div>
+  </div>
+  <div class="wrap foot-bottom">
+    <span>Wishes are public and permanent once hung — there's no delete. Mainnet only.</span>
+    <span>Built for BOTChain Build Week</span>
+  </div>
+</footer>
+
+<div id="toastHost" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  /* ============================================================
+     CONFIG — edit CONTRACT_ADDRESS after you deploy WishBoard.sol,
+     or paste it into the "Contract" field in the page itself.
+     ============================================================ */
+  var CONTRACT_ADDRESS = "0xB05b6Ccf17Dc9963DC643F9642B5825B1001dc61"; // e.g. "0xAbC123..."
+
+  var ABI = [
+    "function postWish(string _message) payable",
+    "function getWishCount() view returns (uint256)",
+    "function getWish(uint256 _index) view returns (address sender, string message, uint256 timestamp)",
+    "function getAllWishes() view returns (tuple(address sender, string message, uint256 timestamp)[])",
+    "function minFee() view returns (uint256)",
+    "event WishPosted(address indexed sender, string message, uint256 timestamp, uint256 wishId)"
+  ];
+
+  // This site only ever talks to BOT Chain Mainnet — there is no
+  // testnet toggle. If a connected wallet is on a different chain,
+  // the app will prompt it to switch (or add) this network.
+  var NETWORK = {
+    chainIdHex: "0x2a5",
+    chainIdDec: 677,
+    name: "BOT Chain Mainnet",
+    short: "Mainnet · 677",
+    rpc: "https://rpc.botchain.ai",
+    explorer: "https://scan.botchain.ai",
+    currency: { name: "BOT", symbol: "BOT", decimals: 18 }
+  };
+
+  /* ============================================================
+     STATE
+     ============================================================ */
+  var state = {
+    contractAddress: CONTRACT_ADDRESS,
+    account: null,
+    walletChainId: null, // hex chain id currently reported by the wallet
+    minFee: null,
+    wishes: [],
+    sortNewestFirst: true,
+    connecting: false,
+    posting: false
+  };
+
+  var readProvider = null;
+
+  /* ============================================================
+     DOM
+     ============================================================ */
+  var el = {
+    networkChip: document.getElementById("networkChip"),
+    networkDot: document.getElementById("networkDot"),
+    networkChipLabel: document.getElementById("networkChipLabel"),
+    connectBtn: document.getElementById("connectBtn"),
+    connectBtnLabel: document.getElementById("connectBtnLabel"),
+    wishInput: document.getElementById("wishInput"),
+    charCount: document.getElementById("charCount"),
+    postBtn: document.getElementById("postBtn"),
+    postBtnLabel: document.getElementById("postBtnLabel"),
+    feeNote: document.getElementById("feeNote"),
+    inlineStatus: document.getElementById("inlineStatus"),
+    contractInput: document.getElementById("contractInput"),
+    loadContractBtn: document.getElementById("loadContractBtn"),
+    setupHint: document.getElementById("setupHint"),
+    setupBar: document.getElementById("setupBar"),
+    setupReveal: document.getElementById("setupReveal"),
+    setupRevealBtn: document.getElementById("setupRevealBtn"),
+    sortToggle: document.getElementById("sortToggle"),
+    wallGrid: document.getElementById("wallGrid"),
+    statCount: document.getElementById("statCount"),
+    statWishers: document.getElementById("statWishers"),
+    statCost: document.getElementById("statCost"),
+    footChain: document.getElementById("footChain"),
+    footChainId: document.getElementById("footChainId"),
+    footRpc: document.getElementById("footRpc"),
+    footExplorer: document.getElementById("footExplorer"),
+    footContract: document.getElementById("footContract"),
+    toastHost: document.getElementById("toastHost")
+  };
+
+  /* ============================================================
+     HELPERS
+     ============================================================ */
+  function net(){ return NETWORK; }
+  function isDevMode(){
+    try{
+      return /(^|[?&])dev=1(&|$)/.test(window.location.search);
+    }catch(e){ return false; }
+  }
+  function isOnMainnet(){
+    return !!state.walletChainId && state.walletChainId.toLowerCase() === NETWORK.chainIdHex.toLowerCase();
+  }
+
+  function escapeHtml(str){
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function shortAddr(a){
+    if(!a) return "";
+    return a.slice(0,6) + "…" + a.slice(-4);
+  }
+
+  function formatTime(unixSeconds){
+    var d = new Date(Number(unixSeconds) * 1000);
+    if(isNaN(d.getTime())) return "";
+    var diffMs = Date.now() - d.getTime();
+    var mins = Math.floor(diffMs / 60000);
+    if(mins < 1) return "just now";
+    if(mins < 60) return mins + "m ago";
+    var hrs = Math.floor(mins / 60);
+    if(hrs < 24) return hrs + "h ago";
+    var days = Math.floor(hrs / 24);
+    if(days < 30) return days + "d ago";
+    return d.toLocaleDateString(undefined, { year:"numeric", month:"short", day:"numeric" });
+  }
+
+  function seededRotation(index, msg){
+    var seed = (index * 37) + (msg ? msg.length * 5 : 0);
+    return ((seed % 9) - 4); // -4..4 deg
+  }
+  var STRING_HEIGHTS = [16, 32, 22, 42, 18, 36, 26, 46, 20];
+  function seededHeight(index){
+    return STRING_HEIGHTS[index % STRING_HEIGHTS.length];
+  }
+
+  function toast(msg, kind){
+    var t = document.createElement("div");
+    t.className = "toast" + (kind ? " " + kind : "");
+    t.textContent = msg;
+    el.toastHost.appendChild(t);
+    setTimeout(function(){
+      t.style.transition = "opacity .25s ease";
+      t.style.opacity = "0";
+      setTimeout(function(){ t.remove(); }, 260);
+    }, 4200);
+  }
+
+  function setInlineStatus(msg, kind, spinning){
+    el.inlineStatus.className = "show" + (kind ? " " + kind : "");
+    el.inlineStatus.innerHTML = (spinning ? spinnerSvg() : "") + "<span>" + escapeHtml(msg) + "</span>";
+  }
+  function clearInlineStatus(){
+    el.inlineStatus.className = "";
+    el.inlineStatus.innerHTML = "";
+  }
+  function spinnerSvg(){
+    return '<svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"></path></svg>';
+  }
+
+  /* ============================================================
+     NETWORK UI  (mainnet-only — no testnet toggle)
+     ============================================================ */
+  function renderNetworkUI(){
+    var n = net();
+    el.footChain.textContent = n.name;
+    el.footChainId.textContent = n.chainIdDec;
+    el.footRpc.textContent = n.rpc.replace("https://", "");
+    el.footRpc.href = n.rpc;
+    el.footExplorer.textContent = n.explorer.replace("https://", "");
+    el.footExplorer.href = n.explorer;
+
+    if(state.contractAddress && ethers.utils.isAddress(state.contractAddress)){
+      el.footContract.textContent = shortAddr(state.contractAddress);
+      el.footContract.href = n.explorer + "/address/" + state.contractAddress;
+    } else {
+      el.footContract.textContent = "not set";
+      el.footContract.removeAttribute("href");
+    }
+    renderNetworkDot();
+  }
+
+  // Clicking the network chip never switches which chain the *page*
+  // reads from (there's only one: BOT Chain Mainnet). It only ever
+  // asks a connected wallet to switch/add that chain if it's elsewhere.
+  function requestWalletOnMainnet(){
+    if(!hasWallet()){
+      toast("This board only runs on " + net().name + ". Install MetaMask to connect.", "");
+      return;
+    }
+    if(!state.account){
+      toast("Connect your wallet first — it'll be pointed at " + net().name + " automatically.", "");
+      return;
+    }
+    el.networkChip.disabled = true;
+    ensureWalletNetwork()
+      .then(function(){
+        renderNetworkDot();
+        toast("Wallet switched to " + net().name + ".", "ok");
+      })
+      .catch(function(err){
+        console.error(err);
+        toast(err && err.message ? err.message : "Couldn\u2019t switch network.", "err");
+      })
+      .finally(function(){
+        el.networkChip.disabled = false;
+      });
+  }
+
+  /* ============================================================
+     READ-ONLY LOADING (works without a wallet)
+     ============================================================ */
+  function initReadProvider(){
+    try{
+      var n = net();
+      // Passing the network explicitly skips ethers' own eth_chainId
+      // detection call on the RPC endpoint — that probe is what was
+      // throwing "could not detect network" if the endpoint is slow
+      // or briefly unreachable. Reads will still fail gracefully
+      // below (via renderWallError) if the RPC truly can't respond.
+      readProvider = new ethers.providers.JsonRpcProvider(n.rpc, {
+        chainId: n.chainIdDec,
+        name: "bot-chain-mainnet"
+      });
+    }catch(e){
+      readProvider = null;
+    }
+  }
+
+  function getReadContract(){
+    if(!readProvider || !state.contractAddress || !ethers.utils.isAddress(state.contractAddress)) return null;
+    return new ethers.Contract(state.contractAddress, ABI, readProvider);
+  }
+
+  function loadWishes(){
+    var contract = getReadContract();
+    if(!contract){
+      renderSetupNeeded();
+      renderStats([]);
+      return;
+    }
+    el.wallGrid.innerHTML = '<div class="wall-loading">Reading the wall…</div>';
+
+    Promise.all([
+      contract.getAllWishes(),
+      contract.minFee().catch(function(){ return ethers.BigNumber.from(0); })
+    ]).then(function(res){
+      var raw = res[0];
+      state.minFee = res[1];
+      state.wishes = raw.map(function(w, i){
+        return { sender: w.sender, message: w.message, timestamp: w.timestamp.toString(), index: i };
+      });
+      renderFeeNote();
+      renderWall();
+      renderStats(state.wishes);
+    }).catch(function(err){
+      console.error(err);
+      renderWallError(err);
+      renderStats([]);
+    });
+  }
+
+  function renderFeeNote(){
+    if(state.minFee === null) return;
+    if(state.minFee.isZero()){
+      el.feeNote.textContent = "Free to post — the contract charges nothing. Your wallet will still show a small network gas fee; that's paid to the chain, not to this board.";
+    } else {
+      el.feeNote.textContent = "Costs " + ethers.utils.formatEther(state.minFee) + " BOT to post, plus network gas.";
+    }
+  }
+
+  function renderSetupNeeded(){
+    el.wallGrid.innerHTML = '<div class="wall-empty">This board isn\u2019t wired up yet.<br>Paste your deployed contract address above to load it.</div>';
+  }
+
+  function renderWallError(err){
+    var msg;
+    if(err && (err.code === "NETWORK_ERROR" || err.event === "noNetwork")){
+      msg = "Couldn\u2019t reach the BOT Chain Mainnet RPC endpoint right now. It may be temporarily down \u2014 try refreshing in a moment.";
+    } else {
+      msg = (err && (err.reason || (err.error && err.error.message) || err.message)) || "Couldn\u2019t read the contract.";
+    }
+    el.wallGrid.innerHTML = '<div class="wall-error">Couldn\u2019t load the wall: ' + escapeHtml(msg) + '</div>';
+  }
+
+  function renderStats(wishes){
+    el.statCount.textContent = wishes.length;
+    var unique = new Set(wishes.map(function(w){ return w.sender.toLowerCase(); }));
+    el.statWishers.textContent = wishes.length ? unique.size : "—";
+    if(state.minFee === null){
+      el.statCost.textContent = "—";
+    } else {
+      el.statCost.textContent = state.minFee.isZero() ? "Free" : ethers.utils.formatEther(state.minFee) + " BOT";
+    }
+  }
+
+  function renderWall(){
+    var list = state.wishes.slice();
+    if(state.sortNewestFirst) list.reverse();
+
+    if(list.length === 0){
+      el.wallGrid.innerHTML = '<div class="wall-empty">Nothing\u2019s hanging yet.<br>Yours could be the first.</div>';
+      return;
+    }
+
+    var frag = document.createDocumentFragment();
+    list.forEach(function(w, displayIndex){
+      var rot = seededRotation(w.index, w.message);
+      var h = seededHeight(w.index);
+
+      var unit = document.createElement("div");
+      unit.className = "tag-unit";
+
+      var str = document.createElement("div");
+      str.className = "string";
+      str.style.height = h + "px";
+      unit.appendChild(str);
+
+      var tag = document.createElement("div");
+      tag.className = "tag";
+      tag.style.setProperty("--rot", rot + "deg");
+      tag.style.animationDelay = (displayIndex % 6) * 0.35 + "s";
+
+      var explorerLink = net().explorer + "/address/" + w.sender;
+
+      tag.innerHTML =
+        '<div class="grommet"></div>' +
+        '<p class="tag-message">' + escapeHtml(w.message) + '</p>' +
+        '<div class="tag-meta">' +
+          '<a href="' + explorerLink + '" target="_blank" rel="noopener" title="' + escapeHtml(w.sender) + '">' + shortAddr(w.sender) + '</a>' +
+          '<span>' + formatTime(w.timestamp) + '</span>' +
+        '</div>';
+
+      unit.appendChild(tag);
+      frag.appendChild(unit);
+    });
+
+    el.wallGrid.innerHTML = "";
+    el.wallGrid.appendChild(frag);
+  }
+
+  /* ============================================================
+     WALLET
+     ============================================================ */
+  // Picks the MetaMask provider specifically when more than one wallet
+  // extension is injected (e.g. MetaMask + Coinbase Wallet side by side),
+  // so "Connect MetaMask" reliably opens MetaMask rather than whichever
+  // extension grabbed window.ethereum last.
+  function getProvider(){
+    if(typeof window.ethereum === "undefined") return null;
+    if(window.ethereum.providers && window.ethereum.providers.length){
+      var mm = window.ethereum.providers.find(function(p){ return p.isMetaMask; });
+      if(mm) return mm;
+      return window.ethereum.providers[0];
+    }
+    return window.ethereum;
+  }
+  function hasWallet(){ return getProvider() !== null; }
+  function hasMetaMask(){
+    var p = getProvider();
+    return !!(p && p.isMetaMask);
+  }
+
+  function connectWallet(){
+    if(state.connecting) return;
+    var provider = getProvider();
+    if(!provider){
+      toast("No wallet found. Install MetaMask to hang a wish.", "err");
+      window.open("https://metamask.io/", "_blank", "noopener");
+      return;
+    }
+    state.connecting = true;
+    el.connectBtnLabel.textContent = "Connecting…";
+    el.connectBtn.disabled = true;
+
+    provider.request({ method: "eth_requestAccounts" })
+      .then(function(accounts){
+        state.account = accounts[0];
+        return ensureWalletNetwork();
+      })
+      .then(function(){
+        toast(hasMetaMask() ? "MetaMask connected." : "Wallet connected.", "ok");
+      })
+      .catch(function(err){
+        console.error(err);
+        toast(err && err.message ? err.message : "Couldn\u2019t connect the wallet.", "err");
+      })
+      .finally(function(){
+        state.connecting = false;
+        el.connectBtn.disabled = false;
+        renderWalletUI();
+      });
+  }
+
+  function ensureWalletNetwork(){
+    var n = net();
+    var provider = getProvider();
+    if(!provider) return Promise.reject(new Error("No wallet found."));
+    return provider.request({ method: "eth_chainId" }).then(function(chainId){
+      state.walletChainId = chainId;
+      if(chainId.toLowerCase() === n.chainIdHex.toLowerCase()) return;
+      return provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: n.chainIdHex }]
+      }).catch(function(switchErr){
+        if(switchErr && switchErr.code === 4902){
+          return provider.request({
+            method: "wallet_addEthereumChain",
+            params: [{
+              chainId: n.chainIdHex,
+              chainName: n.name,
+              nativeCurrency: n.currency,
+              rpcUrls: [n.rpc],
+              blockExplorerUrls: [n.explorer]
+            }]
+          });
+        }
+        throw switchErr;
+      }).then(function(){
+        state.walletChainId = n.chainIdHex;
+      });
+    });
+  }
+
+  function renderWalletUI(){
+    if(state.account){
+      el.connectBtnLabel.textContent = shortAddr(state.account);
+      el.connectBtn.classList.remove("btn-primary");
+      el.connectBtn.classList.add("btn-ghost");
+    } else {
+      el.connectBtnLabel.textContent = "Connect";
+      el.connectBtn.classList.add("btn-primary");
+      el.connectBtn.classList.remove("btn-ghost");
+    }
+    renderNetworkDot();
+  }
+
+  function renderNetworkDot(){
+    if(!state.account){
+      el.networkDot.className = "chip-dot";
+      el.networkChipLabel.textContent = net().short;
+    } else if(isOnMainnet()){
+      el.networkDot.className = "chip-dot on";
+      el.networkChipLabel.textContent = net().short;
+    } else {
+      el.networkDot.className = "chip-dot off";
+      el.networkChipLabel.textContent = "Wrong network";
+    }
+  }
+
+  function getSignerContract(){
+    if(!state.contractAddress || !ethers.utils.isAddress(state.contractAddress)){
+      throw new Error("Paste a valid contract address first.");
+    }
+    var provider = getProvider();
+    if(!provider) throw new Error("No wallet found.");
+    var web3Provider = new ethers.providers.Web3Provider(provider);
+    var signer = web3Provider.getSigner();
+    return new ethers.Contract(state.contractAddress, ABI, signer);
+  }
+
+  /* ============================================================
+     POST A WISH
+     ============================================================ */
+  function postWish(){
+    var message = el.wishInput.value.trim();
+
+    if(!message){
+      setInlineStatus("Write something before hanging it.", "err");
+      return;
+    }
+    if(message.length > 280){
+      setInlineStatus("Keep it under 280 characters.", "err");
+      return;
+    }
+    var provider = getProvider();
+    if(!provider){
+      setInlineStatus("No wallet found. Install MetaMask to post.", "err");
+      return;
+    }
+    if(!state.contractAddress || !ethers.utils.isAddress(state.contractAddress)){
+      setInlineStatus("Paste a contract address above first.", "err");
+      return;
+    }
+    if(state.posting) return;
+
+    state.posting = true;
+    el.postBtn.disabled = true;
+    el.postBtnLabel.textContent = "Confirm in wallet…";
+    setInlineStatus("Waiting for your wallet…", "info", true);
+
+    var contract;
+    provider.request({ method: "eth_requestAccounts" })
+      .then(function(accounts){
+        state.account = accounts[0];
+        renderWalletUI();
+        return ensureWalletNetwork();
+      })
+      .then(function(){
+        contract = getSignerContract();
+        var fee = state.minFee || ethers.BigNumber.from(0);
+        return contract.postWish(message, { value: fee });
+      })
+      .then(function(tx){
+        el.postBtnLabel.textContent = "Hanging…";
+        setInlineStatus("Waiting for confirmation…", "info", true);
+        return tx.wait();
+      })
+      .then(function(){
+        setInlineStatus("Wish hung. It's permanent now.", "ok");
+        toast("Your wish is on the wall.", "ok");
+        el.wishInput.value = "";
+        updateCharCount();
+        loadWishes();
+      })
+      .catch(function(err){
+        console.error(err);
+        var msg = (err && (err.reason || (err.error && err.error.message) || err.message)) || "The transaction failed.";
+        if(err && err.code === 4001) msg = "Cancelled in wallet.";
+        setInlineStatus(msg, "err");
+        toast(msg, "err");
+      })
+      .finally(function(){
+        state.posting = false;
+        el.postBtn.disabled = false;
+        el.postBtnLabel.textContent = "Hang it on the wall";
+        setTimeout(clearInlineStatus, 5000);
+      });
+  }
+
+  /* ============================================================
+     UI WIRING
+     ============================================================ */
+  function updateCharCount(){
+    var len = el.wishInput.value.length;
+    el.charCount.textContent = len + " / 280";
+    el.charCount.classList.toggle("warn", len > 260);
+  }
+
+  function applyContractAddress(){
+    var val = el.contractInput.value.trim();
+    if(!val){
+      toast("Paste a contract address first.", "err");
+      return;
+    }
+    if(!ethers.utils.isAddress(val)){
+      toast("That doesn\u2019t look like a valid address.", "err");
+      return;
+    }
+    state.contractAddress = val;
+    renderNetworkUI();
+    loadWishes();
+    toast("Board loaded.", "ok");
+  }
+
+  el.connectBtn.addEventListener("click", connectWallet);
+  el.networkChip.addEventListener("click", requestWalletOnMainnet);
+  el.postBtn.addEventListener("click", postWish);
+  el.wishInput.addEventListener("input", updateCharCount);
+  el.loadContractBtn.addEventListener("click", applyContractAddress);
+  el.contractInput.addEventListener("keydown", function(e){
+    if(e.key === "Enter") applyContractAddress();
+  });
+  el.sortToggle.addEventListener("click", function(){
+    state.sortNewestFirst = !state.sortNewestFirst;
+    el.sortToggle.textContent = state.sortNewestFirst ? "Newest first" : "Oldest first";
+    renderWall();
+  });
+  el.setupRevealBtn.addEventListener("click", function(){
+    el.setupBar.style.display = "";
+    el.setupReveal.style.display = "none";
+  });
+
+  var walletProvider = getProvider();
+  if(walletProvider && walletProvider.on){
+    walletProvider.on("accountsChanged", function(accounts){
+      state.account = accounts[0] || null;
+      renderWalletUI();
+    });
+    walletProvider.on("chainChanged", function(chainId){
+      state.walletChainId = chainId;
+      renderWalletUI();
+      if(state.account && !isOnMainnet()){
+        toast("Your wallet switched away from " + net().name + ". Click the network chip to switch back.", "err");
+      }
+    });
+  }
+
+  /* ============================================================
+     INIT
+     ============================================================ */
+  function init(){
+    renderNetworkUI();
+    initReadProvider();
+    updateCharCount();
+    renderWalletUI();
+
+    if(state.contractAddress){
+      el.contractInput.value = state.contractAddress;
+      el.setupBar.style.display = "none";
+      // The "change contract" escape hatch is for local testing only.
+      // With a contract already baked into the code, regular visitors
+      // should never see a way to point the board at a different one —
+      // append ?dev=1 to the URL to reveal it while developing.
+      el.setupReveal.style.display = isDevMode() ? "" : "none";
+    }
+
+    if(walletProvider){
+      walletProvider.request({ method: "eth_chainId" }).then(function(chainId){
+        state.walletChainId = chainId;
+        renderWalletUI();
+      }).catch(function(){});
+
+      walletProvider.request({ method: "eth_accounts" }).then(function(accounts){
+        if(accounts && accounts[0]){
+          state.account = accounts[0];
+          renderWalletUI();
+        }
+      }).catch(function(){});
+    }
+
+    loadWishes();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
