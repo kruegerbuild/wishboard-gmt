@@ -1,6 +1,6 @@
 # Wish Board
 
-A public wall for wishes, written by strangers, kept forever. Free to use, just pay a tiny amount of gass fee.
+A public wall for wishes, written by strangers, kept forever. Free to use, just pay a tiny amount of gas fee.
 
 ## The idea
 
