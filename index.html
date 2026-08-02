@@ -363,6 +363,18 @@
     color: rgba(250,243,224,.65);
   }
   .wall-error{ font-family: var(--font-mono); font-size:.85rem; color:#e6a49c; }
+  .wall-banner{
+    font-family: var(--font-mono); font-size: .8rem; color: var(--tan);
+    background: rgba(230, 164, 156, .08); border: 1px solid rgba(230,164,156,.25);
+    border-radius: 10px; padding: 10px 14px; margin: -4px 0 18px;
+    display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+  }
+  .wall-banner button{
+    font-family: inherit; font-size: inherit; color: var(--cream);
+    background:none; border:1px solid rgba(240,232,214,.3); border-radius:8px;
+    padding: 4px 10px; cursor:pointer;
+  }
+  .wall-banner button:hover{ border-color: rgba(240,232,214,.6); }
   .wall-loading{ text-align:center; padding: 40px; color: var(--tan); font-family: var(--font-mono); font-size:.82rem; }
 
   /* ============================================================
@@ -532,6 +544,7 @@
     </div>
 
     <div class="rail" aria-hidden="true"></div>
+    <div id="wallBanner"></div>
     <div class="wall-grid" id="wallGrid">
       <div class="wall-loading">Reading the wall…</div>
     </div>
@@ -572,7 +585,7 @@
 
 <div id="toastHost" aria-live="polite"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" crossorigin="anonymous"></script>
 <script>
 (function(){
   "use strict";
@@ -644,6 +657,7 @@
     setupRevealBtn: document.getElementById("setupRevealBtn"),
     sortToggle: document.getElementById("sortToggle"),
     wallGrid: document.getElementById("wallGrid"),
+    wallBanner: document.getElementById("wallBanner"),
     statCount: document.getElementById("statCount"),
     statWishers: document.getElementById("statWishers"),
     statCost: document.getElementById("statCost"),
@@ -803,14 +817,55 @@
     return new ethers.Contract(state.contractAddress, ABI, readProvider);
   }
 
-  function loadWishes(){
+  var CACHE_KEY = "wishboard_cache_v1";
+
+  function saveWishCache(){
+    try{
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        contractAddress: state.contractAddress,
+        wishes: state.wishes,
+        minFee: state.minFee ? state.minFee.toString() : "0",
+        savedAt: Date.now()
+      }));
+    }catch(e){ /* storage unavailable or full — not critical, just skip caching */ }
+  }
+
+  function loadWishCache(){
+    try{
+      var raw = localStorage.getItem(CACHE_KEY);
+      if(!raw) return null;
+      var payload = JSON.parse(raw);
+      if(!payload || payload.contractAddress !== state.contractAddress) return null;
+      return payload;
+    }catch(e){ return null; }
+  }
+
+  function clearWallBanner(){
+    el.wallBanner.innerHTML = "";
+  }
+
+  function renderStaleBanner(savedAt){
+    var mins = Math.max(1, Math.round((Date.now() - savedAt) / 60000));
+    var when = mins < 60 ? (mins + (mins === 1 ? " minute ago" : " minutes ago")) : "a while ago";
+    el.wallBanner.innerHTML =
+      '<span>Showing the last wall we could load, from ' + when + '. Live data is temporarily unreachable.</span>' +
+      '<button type="button" id="wallRetryBtn">Try again</button>';
+    var btn = document.getElementById("wallRetryBtn");
+    if(btn) btn.addEventListener("click", function(){ loadWishes(); });
+  }
+
+  function loadWishes(attempt){
+    attempt = attempt || 0;
     var contract = getReadContract();
     if(!contract){
       renderSetupNeeded();
       renderStats([]);
       return;
     }
-    el.wallGrid.innerHTML = '<div class="wall-loading">Reading the wall…</div>';
+    if(attempt === 0){
+      clearWallBanner();
+      el.wallGrid.innerHTML = '<div class="wall-loading">Reading the wall…</div>';
+    }
 
     Promise.all([
       contract.getAllWishes(),
@@ -821,13 +876,34 @@
       state.wishes = raw.map(function(w, i){
         return { sender: w.sender, message: w.message, timestamp: w.timestamp.toString(), index: i };
       });
+      clearWallBanner();
       renderFeeNote();
       renderWall();
       renderStats(state.wishes);
+      saveWishCache();
     }).catch(function(err){
+      // Public RPC endpoints are often rate-limited or, as with a
+      // single community-run node, can just go down (503) for a
+      // while. A single failed read right after a transaction
+      // confirms is usually transient — retry a couple of times
+      // with a short backoff before giving up.
+      if(attempt < 2){
+        setTimeout(function(){ loadWishes(attempt + 1); }, 1000 * (attempt + 1));
+        return;
+      }
       console.error(err);
-      renderWallError(err);
-      renderStats([]);
+      var cached = loadWishCache();
+      if(cached){
+        state.wishes = cached.wishes || [];
+        state.minFee = ethers.BigNumber.from(cached.minFee || "0");
+        renderFeeNote();
+        renderWall();
+        renderStats(state.wishes);
+        renderStaleBanner(cached.savedAt);
+      } else {
+        renderWallError(err);
+        renderStats([]);
+      }
     });
   }
 
@@ -847,11 +923,15 @@
   function renderWallError(err){
     var msg;
     if(err && (err.code === "NETWORK_ERROR" || err.event === "noNetwork")){
-      msg = "Couldn\u2019t reach the BOT Chain Mainnet RPC endpoint right now. It may be temporarily down \u2014 try refreshing in a moment.";
+      msg = "Couldn\u2019t reach the BOT Chain Mainnet RPC endpoint right now. It may be temporarily down \u2014 try again in a moment.";
     } else {
       msg = (err && (err.reason || (err.error && err.error.message) || err.message)) || "Couldn\u2019t read the contract.";
     }
-    el.wallGrid.innerHTML = '<div class="wall-error">Couldn\u2019t load the wall: ' + escapeHtml(msg) + '</div>';
+    el.wallGrid.innerHTML =
+      '<div class="wall-error">Couldn\u2019t load the wall: ' + escapeHtml(msg) + '<br>' +
+      '<button type="button" id="wallErrorRetryBtn" class="btn-linklike">Try again</button></div>';
+    var btn = document.getElementById("wallErrorRetryBtn");
+    if(btn) btn.addEventListener("click", function(){ loadWishes(); });
   }
 
   function renderStats(wishes){
@@ -1082,7 +1162,10 @@
         toast("Your wish is on the wall.", "ok");
         el.wishInput.value = "";
         updateCharCount();
-        loadWishes();
+        // Small delay so the RPC node has a moment to catch up with
+        // the block that was just confirmed, rather than re-reading
+        // the whole wall in the same instant it landed.
+        setTimeout(loadWishes, 800);
       })
       .catch(function(err){
         console.error(err);
